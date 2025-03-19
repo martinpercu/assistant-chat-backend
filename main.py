@@ -10,7 +10,7 @@ load_dotenv()
 app = FastAPI()
 
 # Configurar LangChain con OpenAI
-llm = ChatOpenAI(model="gpt-3.5-turbo", api_key=os.getenv("OPENAI_API_KEY"))
+llm = ChatOpenAI(model="gpt-3.5-turbo", api_key=os.getenv("OPENAI_KEY"))
 
 
 app = FastAPI()
