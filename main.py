@@ -1,4 +1,4 @@
-from variables import OPENAI_KEY, PINECONE_API
+# from variables import OPENAI_KEY, PINECONE_API
 from fastapi import FastAPI, HTTPException
 # from typing import Optional
 
@@ -43,8 +43,8 @@ from typing import AsyncGenerator
 
 # client = OpenAI(api_key=OPENAI_KEY)
 
-# OPENAI_KEY = os.getenv("OPENAI_KEY")
-# PINECONE_API = os.getenv("PINECONE_API")
+OPENAI_KEY = os.getenv("OPENAI_KEY")
+PINECONE_API = os.getenv("PINECONE_API")
 
 os.environ["OPENAI_API_KEY"] = OPENAI_KEY
 os.environ["PINECONE_API_KEY"] = PINECONE_API
