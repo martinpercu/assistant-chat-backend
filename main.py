@@ -97,6 +97,22 @@ class ChatResponse(BaseModel):
 # rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
 
 # Configurar historial de conversación
+
+
+
+# Endpoint para evitar la caca del favicon
+@app.get('/favicon.ico', include_in_schema=False)
+async def favicon():
+    return {}
+
+# Endpoint de verificación de salud
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
+
+
+
+
 store = {}
 
 def get_session_history(session_id: str):
@@ -112,13 +128,6 @@ def get_session_history(session_id: str):
 #     history_messages_key='chat_history',
 #     output_messages_key='answer'
 # )
-
-
-
-# Endpoint de verificación de salud
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
 
 
 # Modelo para la solicitud de chat con streaming
