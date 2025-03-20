@@ -37,9 +37,9 @@ from typing import AsyncGenerator
 
 
 
-from dotenv import load_dotenv
-# Cargar las variables del archivo .env
-load_dotenv()
+# from dotenv import load_dotenv
+# # Cargar las variables del archivo .env
+# load_dotenv()
 
 
 # # # Get the OPENAI_KEY from environment in Render

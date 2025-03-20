@@ -1,4 +1,3 @@
-# from variables import OPENAI_KEY, PINECONE_API
 from fastapi import FastAPI, HTTPException
 # from typing import Optional
 
