@@ -37,9 +37,9 @@ from typing import AsyncGenerator
 
 
 
-# from dotenv import load_dotenv
-# # Cargar las variables del archivo .env
-# load_dotenv()
+from dotenv import load_dotenv
+# Cargar las variables del archivo .env
+load_dotenv()
 
 
 # # # Get the OPENAI_KEY from environment in Render
@@ -219,7 +219,6 @@ async def stream_rag_response(query: str, session_id: str = "default_session", s
 @app.post("/stream_chat")
 async def stream_chat(request: ChatoRequest):
     """Endpoint que devuelve la respuesta en streaming"""
-    print(request.system_prompt_text)
     return StreamingResponse(
         stream_rag_response(request.message, request.session_id, request.system_prompt_text),
         media_type="text/plain"
