@@ -1,0 +1,11 @@
+fastapi[all]
+uvicorn
+python-dotenv
+openai
+langchain 
+langchain_core
+langchain_openai
+langchain_community
+langchain-text-splitters
+langchain-pinecone
+pinecone
