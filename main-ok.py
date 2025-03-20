@@ -7,7 +7,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 # import asyncio
 from pydantic import BaseModel
-from typing import Optional
 # from openai import OpenAI
 
 # import os
@@ -81,20 +80,64 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str
 
+# Inicialización de modelos y vector store
+embeddings_model = OpenAIEmbeddings(
+    model='text-embedding-3-small',
+    api_key=OPENAI_KEY
+)
 
-# # Crear prompt para QA
-# qa_prompt = ChatPromptTemplate.from_messages([
-#     ('system', system_prompt),
-#     ('system', 'Contexto: {context}'),
-#     MessagesPlaceholder('chat_history'),
-#     ('human', '{input}')
-# ])
+llm = ChatOpenAI(
+    model="gpt-4o-mini",
+    temperature=0.6,
+    max_tokens=1250,
+    api_key=OPENAI_KEY,
+)
 
-# # Crear cadena de respuesta
-# question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
+# Inicializar Pinecone
+pc = Pinecone(api_key=PINECONE_API)
+index = pc.Index(INDEX_NAME)
+vector_store = PineconeVectorStore(
+    index=index,
+    embedding=embeddings_model
+)
+retriever = vector_store.as_retriever()
 
-# # Crear cadena RAG completa
-# rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
+# Definir prompts
+system_prompt = (
+    'Eres un asistente que responde unicamente usando la informacion de los PDFs que tienes en las vectorstore'
+)
+
+contextualize_q_system_prompt = (
+    "Responde segun el historial del chat y la última pregunta del usuario "
+    "Si no está en el historial del chat o en el contexto no debes responder a la pregunta. Debes indicar que esa información no esta disponible y que preguntes a Martin E Mendez al respecto."
+    "Ademas siempre responde de manera simpatica. Hasta graciosa. Puedes usar emojis."
+)
+
+# Crear prompt para contextualizar la pregunta
+contextualize_q_prompt = ChatPromptTemplate.from_messages([
+    ('system', contextualize_q_system_prompt),
+    MessagesPlaceholder('chat_history'),
+    ('human', '{input}')
+])
+
+# Crear retriever consciente del historial
+history_aware_retriever = create_history_aware_retriever(
+    llm, retriever, contextualize_q_prompt
+)
+
+# Crear prompt para QA
+qa_prompt = ChatPromptTemplate.from_messages([
+    ('system', system_prompt),
+    ('system', 'Contexto: {context}'),
+    MessagesPlaceholder('chat_history'),
+    ('human', '{input}')
+])
+
+# Crear cadena de respuesta
+question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
+
+# Crear cadena RAG completa
+rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
 
 # Configurar historial de conversación
 store = {}
@@ -104,16 +147,30 @@ def get_session_history(session_id: str):
         store[session_id] = ChatMessageHistory()
     return store[session_id]
 
-# # Crear cadena RAG conversacional
-# conversational_rag_chain = RunnableWithMessageHistory(
-#     rag_chain,
-#     get_session_history,
-#     input_messages_key='input',
-#     history_messages_key='chat_history',
-#     output_messages_key='answer'
-# )
+# Crear cadena RAG conversacional
+conversational_rag_chain = RunnableWithMessageHistory(
+    rag_chain,
+    get_session_history,
+    input_messages_key='input',
+    history_messages_key='chat_history',
+    output_messages_key='answer'
+)
 
-
+# Endpoint para chatear
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
+    try:
+        # Procesar el mensaje con el sistema RAG
+        response = conversational_rag_chain.invoke(
+            {'input': request.message},
+            config={'configurable': {'session_id': request.session_id}}
+        )
+        
+        # Devolver la respuesta
+        return ChatResponse(response=response['answer'])
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
 
 # Endpoint de verificación de salud
 @app.get("/health")
@@ -121,64 +178,16 @@ async def health_check():
     return {"status": "healthy"}
 
 
+
+
 # Modelo para la solicitud de chat con streaming
 class ChatoRequest(BaseModel):
     message: str
     session_id: str = "default_session"
-    system_prompt_text: Optional[str] = None  # Campo opcional
 
 
-async def stream_rag_response(query: str, session_id: str = "default_session", system_prompt_text: Optional[str] = None):
-    """Genera respuestas en streaming desde el sistema RAG"""        
-        
-    # Inicialización de modelos y vector store
-    embeddings_model = OpenAIEmbeddings(
-        model='text-embedding-3-small',
-        api_key=OPENAI_KEY
-    )
-
-    llm = ChatOpenAI(
-        model="gpt-4o-mini",
-        temperature=0.6,
-        max_tokens=1250,
-        api_key=OPENAI_KEY,
-    )
-
-    # Inicializar Pinecone
-    pc = Pinecone(api_key=PINECONE_API)
-    index = pc.Index(INDEX_NAME)
-    vector_store = PineconeVectorStore(
-        index=index,
-        embedding=embeddings_model
-    )
-    retriever = vector_store.as_retriever()
-    
-    DEFAULT_SYSTEM_PROMPT = 'Eres un asistente que responde unicamente usando la informacion de los PDFs que tienes en las vectorstore'
-
-    system_prompt_text_to_system_prompt = system_prompt_text or DEFAULT_SYSTEM_PROMPT
-    # Definir prompts
-    system_prompt = (
-       system_prompt_text_to_system_prompt
-    )
-
-    contextualize_q_system_prompt = (
-        "Responde segun el historial del chat y la última pregunta del usuario "
-        "Si no está en el historial del chat o en el contexto no debes responder a la pregunta. Debes indicar que esa información no esta disponible y que preguntes a Martin E Mendez al respecto."
-        "Ademas siempre responde de manera simpatica. Hasta graciosa. Puedes usar emojis."
-    )
-
-    # Crear prompt para contextualizar la pregunta
-    contextualize_q_prompt = ChatPromptTemplate.from_messages([
-        ('system', contextualize_q_system_prompt),
-        MessagesPlaceholder('chat_history'),
-        ('human', '{input}')
-    ])
-
-    # Crear retriever consciente del historial
-    history_aware_retriever = create_history_aware_retriever(
-        llm, retriever, contextualize_q_prompt
-    )
-    
+async def stream_rag_response(query: str, session_id: str = "default_session"):
+    """Genera respuestas en streaming desde el sistema RAG"""
     
     # Preparar el retriever con awareness de historial
     documents = await history_aware_retriever.ainvoke({
@@ -215,12 +224,14 @@ async def stream_rag_response(query: str, session_id: str = "default_session", s
     get_session_history(session_id).add_message(AIMessage(content=response_text))
 
 
+
+
+
 # Endpoint para chatear con streaming
 @app.post("/stream_chat")
 async def stream_chat(request: ChatoRequest):
     """Endpoint que devuelve la respuesta en streaming"""
-    print(request.system_prompt_text)
     return StreamingResponse(
-        stream_rag_response(request.message, request.session_id, request.system_prompt_text),
+        stream_rag_response(request.message, request.session_id),
         media_type="text/plain"
     )
