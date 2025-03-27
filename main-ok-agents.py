@@ -1,12 +1,24 @@
+# from variables import OPENAI_KEY, PINECONE_API
 from fastapi import FastAPI, HTTPException
+# from typing import Optional
 
 from fastapi.middleware.cors import CORSMiddleware
+# This import for async chat
 from fastapi.responses import StreamingResponse
+# import asyncio
 from pydantic import BaseModel
 from typing import Optional
+# from openai import OpenAI
+
+# import os
+
+# This is for Assistant
+# import openai
 
 
 import os
+# from fastapi import FastAPI, HTTPException
+# from pydantic import BaseModel
 from typing import Dict, Any
 from pinecone import Pinecone
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
@@ -17,16 +29,23 @@ from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_community.chat_message_histories import ChatMessageHistory
 
+
 # Esto es para Streaming (extra desde Claude)
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import HumanMessage
 from typing import AsyncGenerator
+
+
 
 from dotenv import load_dotenv
 # Cargar las variables del archivo .env
 load_dotenv()
 
 
+# # # Get the OPENAI_KEY from environment in Render
+# # OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
+
+# client = OpenAI(api_key=OPENAI_KEY)
 
 OPENAI_KEY = os.getenv("OPENAI_KEY")
 PINECONE_API = os.getenv("PINECONE_API")
@@ -47,6 +66,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# # Configuración de variables de entorno
+# OPENAI_KEY = os.getenv("OPENAI_KEY")
+# PINECONE_API = os.getenv("PINECONE_API")
+
 INDEX_NAME = "totalpdf"
 
 # Modelo para la solicitud de chat
@@ -57,6 +80,24 @@ class ChatRequest(BaseModel):
 # Modelo para la respuesta
 class ChatResponse(BaseModel):
     response: str
+
+
+# # Crear prompt para QA
+# qa_prompt = ChatPromptTemplate.from_messages([
+#     ('system', system_prompt),
+#     ('system', 'Contexto: {context}'),
+#     MessagesPlaceholder('chat_history'),
+#     ('human', '{input}')
+# ])
+
+# # Crear cadena de respuesta
+# question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
+
+# # Crear cadena RAG completa
+# rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
+
+# Configurar historial de conversación
+
 
 
 # Endpoint para evitar la caca del favicon
@@ -79,27 +120,14 @@ def get_session_history(session_id: str):
         store[session_id] = ChatMessageHistory()
     return store[session_id]
 
- 
-# Inicialización de modelos y vector store
-embeddings_model = OpenAIEmbeddings(
-    model='text-embedding-3-small',
-    api_key=OPENAI_KEY
-)
-
-llm = ChatOpenAI(
-    model="gpt-4o-mini",
-    temperature=0.6,
-    max_tokens=400,
-    api_key=OPENAI_KEY,
-)
-
-# Inicializar Pinecone
-pc = Pinecone(api_key=PINECONE_API)
-index = pc.Index(INDEX_NAME)
-vector_store = PineconeVectorStore(
-    index=index,
-    embedding=embeddings_model
-)
+# # Crear cadena RAG conversacional
+# conversational_rag_chain = RunnableWithMessageHistory(
+#     rag_chain,
+#     get_session_history,
+#     input_messages_key='input',
+#     history_messages_key='chat_history',
+#     output_messages_key='answer'
+# )
 
 
 # Modelo para la solicitud de chat con streaming
@@ -111,8 +139,29 @@ class ChatoRequest(BaseModel):
 
 async def stream_rag_response(query: str, session_id: str = "default_session", system_prompt_text: Optional[str] = None):
     """Genera respuestas en streaming desde el sistema RAG"""        
-    
+        
+    # Inicialización de modelos y vector store
+    embeddings_model = OpenAIEmbeddings(
+        model='text-embedding-3-small',
+        api_key=OPENAI_KEY
+    )
+
+    llm = ChatOpenAI(
+        model="gpt-4o-mini",
+        temperature=0.6,
+        max_tokens=1250,
+        api_key=OPENAI_KEY,
+    )
+
+    # Inicializar Pinecone
+    pc = Pinecone(api_key=PINECONE_API)
+    index = pc.Index(INDEX_NAME)
+    vector_store = PineconeVectorStore(
+        index=index,
+        embedding=embeddings_model
+    )
     retriever = vector_store.as_retriever()
+    
     DEFAULT_SYSTEM_PROMPT = 'Eres un asistente que responde unicamente usando la informacion de los PDFs que tienes en las vectorstore'
 
     system_prompt_text_to_system_prompt = system_prompt_text or DEFAULT_SYSTEM_PROMPT
@@ -138,7 +187,8 @@ async def stream_rag_response(query: str, session_id: str = "default_session", s
     history_aware_retriever = create_history_aware_retriever(
         llm, retriever, contextualize_q_prompt
     )
-        
+    
+    
     # Preparar el retriever con awareness de historial
     documents = await history_aware_retriever.ainvoke({
         "chat_history": get_session_history(session_id).messages,
@@ -146,7 +196,7 @@ async def stream_rag_response(query: str, session_id: str = "default_session", s
     })
     
     # Preparamos el contexto con los documentos recuperados
-    context = "\n\n".join([doc.page_content for doc in documents])    
+    context = "\n\n".join([doc.page_content for doc in documents])
     
     # Creamos un prompt específico para esta consulta
     streaming_prompt = ChatPromptTemplate.from_messages([
@@ -155,7 +205,7 @@ async def stream_rag_response(query: str, session_id: str = "default_session", s
         *get_session_history(session_id).messages,
         ('human', query)
     ])
-
+    
     # Creamos una nueva cadena de streaming
     streaming_chain = streaming_prompt | llm | StrOutputParser()
     
@@ -178,7 +228,7 @@ async def stream_rag_response(query: str, session_id: str = "default_session", s
 @app.post("/stream_chat")
 async def stream_chat(request: ChatoRequest):
     """Endpoint que devuelve la respuesta en streaming"""
-    # print(request)
+    print(request)
     return StreamingResponse(
         stream_rag_response(request.message, request.session_id, request.system_prompt_text),
         media_type="text/plain"
