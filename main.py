@@ -17,7 +17,7 @@ from typing import Optional
 
 
 import os
-from fastapi import FastAPI, HTTPException
+# from fastapi import FastAPI, HTTPException
 # from pydantic import BaseModel
 from typing import Dict, Any
 from pinecone import Pinecone
@@ -60,7 +60,7 @@ app = FastAPI()
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust as needed for your app
+    allow_origins=["http://localhost:4200", "https://super-assistants.web.app/"],  # Adjust as needed for your app
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -228,6 +228,7 @@ async def stream_rag_response(query: str, session_id: str = "default_session", s
 @app.post("/stream_chat")
 async def stream_chat(request: ChatoRequest):
     """Endpoint que devuelve la respuesta en streaming"""
+    print(request)
     return StreamingResponse(
         stream_rag_response(request.message, request.session_id, request.system_prompt_text),
         media_type="text/plain"
