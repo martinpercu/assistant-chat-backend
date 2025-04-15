@@ -41,7 +41,7 @@ app = FastAPI()
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4200", "https://super-assistants.web.app", "https://trainer-teacher.web.app/"],  # Adjust as needed for your app
+    allow_origins=["http://localhost:4200", "https://super-assistants.web.app", "https://trainer-teacher.web.app"],  # Adjust as needed for your app
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
