@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -12,44 +12,19 @@ from pinecone import Pinecone
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_pinecone import PineconeVectorStore
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-# from langchain.chains import create_history_aware_retriever, create_retrieval_chain
-from langchain.chains import create_history_aware_retriever
-# from langchain.chains.combine_documents import create_stuff_documents_chain
-# from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain.chains import create_history_aware_retriever, create_retrieval_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_community.chat_message_histories import ChatMessageHistory
 
 # Esto es para Streaming (extra desde Claude)
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import HumanMessage
-# from typing import AsyncGenerator
+from typing import AsyncGenerator
 
 from dotenv import load_dotenv
 # Cargar las variables del archivo .env
 load_dotenv()
-
-# For Redis DB
-import redis
-import json
-from langchain_core.messages import BaseMessage, messages_from_dict, messages_to_dict
-
-# Conexión a Redis (Upstash)
-REDIS_URL = os.getenv("REDIS_URL")
-redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
-
-KEY_PREFIX_CHAT = "chat_history:"
-
-
-# # For Redis DB
-# # import redis
-# # import json
-# from redis.asyncio import Redis
-# import json
-
-# REDIS_URL = os.getenv("REDIS_URL")
-
-# # # Redis client
-# # redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
-
 
 
 
@@ -66,13 +41,15 @@ app = FastAPI()
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4200", "https://trainer-teacher.web.app/"],  # Adjust as needed for your app
+    allow_origins=["http://localhost:4200", "https://super-assistants.web.app", "https://trainer-teacher.web.app"],  # Adjust as needed for your app
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-INDEX_NAME = "ethic-teacher"
+INDEX_NAME = "totalpdf"
+
+INDEX_NAME_2 = "ethic-teacher"
 
 # Modelo para la solicitud de chat
 class ChatRequest(BaseModel):
@@ -97,23 +74,12 @@ async def health_check():
 
 
 
-store = {'perroe': "jamon", 'juancito': "Alejandro"}
+store = {}
 
-# def get_session_history(session_id: str):
-#     if session_id not in store:
-#         store[session_id] = ChatMessageHistory()
-#     return store[session_id]
-
-def get_session_history(session_id: str) -> ChatMessageHistory:
-    stored = redis_client.get(f"{KEY_PREFIX_CHAT}{session_id}")
-    if stored:
-        return ChatMessageHistory(messages=messages_from_dict(json.loads(stored)))
-    return ChatMessageHistory()
-
-
-def save_session_history(session_id: str, history: ChatMessageHistory):
-    redis_client.set(f"{KEY_PREFIX_CHAT}{session_id}", json.dumps(messages_to_dict(history.messages)))
-    
+def get_session_history(session_id: str):
+    if session_id not in store:
+        store[session_id] = ChatMessageHistory()
+    return store[session_id]
 
  
 # Inicialización de modelos y vector store
@@ -125,7 +91,7 @@ embeddings_model = OpenAIEmbeddings(
 llm = ChatOpenAI(
     model="gpt-4o-mini",
     temperature=0.6,
-    max_tokens=280,
+    max_tokens=400,
     api_key=OPENAI_KEY,
 )
 
@@ -134,6 +100,15 @@ pc = Pinecone(api_key=PINECONE_API)
 index = pc.Index(INDEX_NAME)
 vector_store = PineconeVectorStore(
     index=index,
+    embedding=embeddings_model
+)
+
+
+# Inicializar Pinecone2
+pc2 = Pinecone(api_key=PINECONE_API)
+index_2 = pc2.Index(INDEX_NAME_2)
+vector_store_2 = PineconeVectorStore(
+    index=index_2,
     embedding=embeddings_model
 )
 
@@ -149,9 +124,7 @@ async def stream_rag_response(query: str, session_id: str = "default_session", s
     """Genera respuestas en streaming desde el sistema RAG"""        
     
     retriever = vector_store.as_retriever()
-    
-    # DEFAULT_SYSTEM_PROMPT = 'Eres un asistente que responde unicamente usando la informacion de los PDFs que tienes en las vectorstore'
-    DEFAULT_SYSTEM_PROMPT = ''
+    DEFAULT_SYSTEM_PROMPT = 'Eres un asistente que responde unicamente usando la informacion de los PDFs que tienes en las vectorstore'
 
     system_prompt_text_to_system_prompt = system_prompt_text or DEFAULT_SYSTEM_PROMPT
     # Definir prompts
@@ -198,9 +171,7 @@ async def stream_rag_response(query: str, session_id: str = "default_session", s
     streaming_chain = streaming_prompt | llm | StrOutputParser()
     
     # Guardamos el mensaje en el historial para futuras consultas
-    # get_session_history(session_id).add_message(HumanMessage(content=query))
-    history = get_session_history(session_id)
-    history.add_message(HumanMessage(content=query))
+    get_session_history(session_id).add_message(HumanMessage(content=query))
     
     # Transmitimos la respuesta por chunks
     response_text = ""
@@ -211,9 +182,8 @@ async def stream_rag_response(query: str, session_id: str = "default_session", s
     
     # Guardamos la respuesta completa en el historial
     from langchain_core.messages import AIMessage
-    # get_session_history(session_id).add_message(AIMessage(content=response_text))
-    history.add_message(AIMessage(content=response_text))
-    save_session_history(session_id, history)
+    get_session_history(session_id).add_message(AIMessage(content=response_text))
+
 
 # Endpoint para chatear con streaming
 @app.post("/stream_chat")
@@ -225,7 +195,8 @@ async def stream_chat(request: ChatoRequest):
         media_type="text/plain"
     )
     
-
+    
+    
 
 
 
@@ -257,7 +228,7 @@ async def stream_rag_response_test(query: str, session_id: str = "default_sessio
     
     print(doc_path)
         
-    retriever = vector_store.as_retriever(
+    retriever = vector_store_2.as_retriever(
         search_type="similarity",
         search_kwargs={
             "k": 20,  # Devolver los 3 documentos más relevantes
@@ -280,7 +251,7 @@ async def stream_rag_response_test(query: str, session_id: str = "default_sessio
     
     # DEFAULT_SYSTEM_PROMPT = 'Eres un asistente que responde unicamente usando la informacion de los PDFs que tienes en las vectorstore'
     DEFAULT_SYSTEM_PROMPT = """
-    You are an AI teacher answering questions and teaching based on vectorstore documents.
+    You are an AI teacher for Ethics Management at work, answering questions and teaching based on vectorstore documents.
 
     **Content**:
     - Use only vectorstore documents, focusing on the specified section (e.g., "Defining Business Ethics") or the full course if no section is selected.
@@ -300,7 +271,7 @@ async def stream_rag_response_test(query: str, session_id: str = "default_sessio
     - Professional, educational, conversational.
 
     **Constraints**:
-    - Use only vectorstore content.
+    - Stay within ethics management; use only vectorstore content.
 
     **Date**: April 10, 2025.
     """
@@ -351,9 +322,7 @@ async def stream_rag_response_test(query: str, session_id: str = "default_sessio
     streaming_chain = streaming_prompt | llm | StrOutputParser()
     
     # Guardamos el mensaje en el historial para futuras consultas
-    # get_session_history(session_id).add_message(HumanMessage(content=query))
-    history = get_session_history(session_id)
-    history.add_message(HumanMessage(content=query))
+    get_session_history(session_id).add_message(HumanMessage(content=query))
     
     # Transmitimos la respuesta por chunks
     response_text = ""
@@ -364,9 +333,7 @@ async def stream_rag_response_test(query: str, session_id: str = "default_sessio
     
     # Guardamos la respuesta completa en el historial
     from langchain_core.messages import AIMessage
-    # get_session_history(session_id).add_message(AIMessage(content=response_text))
-    history.add_message(AIMessage(content=response_text))
-    save_session_history(session_id, history)
+    get_session_history(session_id).add_message(AIMessage(content=response_text))
 
 
 # Endpoint para chatear con streaming
@@ -387,7 +354,7 @@ async def stream_chat_test(request: TeacherChatRequest):
 @app.get("/store")
 async def getStore():
     """Endpoint que devuelve lo que tenga de store"""
-    print(store)
+    # print(store)
     return store
 
 
@@ -413,22 +380,4 @@ generate_prompt_en(
     format_out="bulleted lists with emojis at the start of each item",
     restrictions="Do not make up information. If it's not in the document, say you don't know.",
     context="The document is titled 'ethics-supervisors.pdf' and discusses ethical dilemmas in the workplace."
-)
-
-
-## Redis test
-
-@app.get("/redis/{session_id}")
-async def get_session(session_id: str):
-    redis_client.get(f"{KEY_PREFIX_CHAT}{session_id}")
-    return {"status": "get", "session": session_id}
-
-@app.delete("/redis/{session_id}")
-async def delete_session(session_id: str):
-    redis_client.delete(f"{KEY_PREFIX_CHAT}{session_id}")
-    return {"status": "deleted", "session": session_id}
-
-@app.get("/redis/sessions")
-async def list_sessions():
-    keys = redis_client.keys(f"{KEY_PREFIX_CHAT}*")
-    return {"sessions": keys}
+)    
