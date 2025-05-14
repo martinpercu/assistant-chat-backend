@@ -151,7 +151,7 @@ async def stream_rag_response(query: str, session_id: str = "default_session", s
     retriever = vector_store.as_retriever()
     
     # DEFAULT_SYSTEM_PROMPT = 'Eres un asistente que responde unicamente usando la informacion de los PDFs que tienes en las vectorstore'
-    DEFAULT_SYSTEM_PROMPT = ''
+    DEFAULT_SYSTEM_PROMPT = 'You are an assistant that responds solely using the information from the PDFs you have in the vectorstore'
 
     system_prompt_text_to_system_prompt = system_prompt_text or DEFAULT_SYSTEM_PROMPT
     # Definir prompts
@@ -160,9 +160,9 @@ async def stream_rag_response(query: str, session_id: str = "default_session", s
     )
 
     contextualize_q_system_prompt = (
-        "Responde segun el historial del chat y la última pregunta del usuario "
-        "Si no está en el historial del chat o en el contexto no debes responder a la pregunta. Debes indicar que esa información no esta disponible y que preguntes a Martin E Mendez al respecto."
-        "Ademas siempre responde de manera simpatica. Hasta graciosa. Puedes usar emojis."
+        "Answer based on the chat history and the user's latest question"
+        "If it's not in the chat history or context, you shouldn't answer the question. Just say that info isn't available and tell them to ask Martin E. Mendez about it"
+        "Also, always reply in a friendly way. Even a bit funny"
     )
 
     # Crear prompt para contextualizar la pregunta
@@ -373,7 +373,7 @@ async def stream_rag_response_test(query: str, session_id: str = "default_sessio
 @app.post("/stream_chat_test")
 async def stream_chat_test(request: TeacherChatRequest):
     """Endpoint que devuelve la respuesta en streaming"""
-    print(request)
+    # print(request)
     return StreamingResponse(
         stream_rag_response_test(request.message, request.session_id, request.system_prompt_text, request.pages, request.doc_path),
         media_type="text/plain"
