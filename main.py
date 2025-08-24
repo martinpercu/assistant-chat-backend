@@ -518,6 +518,7 @@ async def process_resume_content(request: ProcessResumeRequest):
             - **City**
             - **Summary/Objective** (if present, max 6 sentences)
             - **Skills** (list main technical and soft skills, comma-separated)
+            - **Languages** (List spoken languages and their proficiency levels, if present. Format as a comma-separated list.)
             - **Work Experience** (list job titles, companies, dates, and brief descriptions)
             - **Certification** (list certificates, issuing organizations, years)
             - **Education** (list degrees, institutions, and graduation years)
